@@ -1,3 +1,4 @@
+import { PackFileEntry } from "maple2-file";
 import { editor } from "monaco-editor";
 import {
   createContext,
@@ -30,7 +31,12 @@ export interface AppStateType {
   addOpenFile: (file: FileTab) => void;
   removeOpenFile: (index: number) => void;
   closeAllTabs: () => void;
+  updateFileTabName: (index: number, name: string) => void;
+
   setEditorSettings: React.Dispatch<React.SetStateAction<EditorSettings>>;
+
+  packFileEntries: PackFileEntry[];
+  setPackFileEntries: React.Dispatch<React.SetStateAction<PackFileEntry[]>>;
 }
 
 // Create the context
@@ -39,6 +45,8 @@ const AppState = createContext<AppStateType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
+  const [packFileEntries, setPackFileEntries] = useState<PackFileEntry[]>([]);
+
   const [openedTabs, setOpenedTabs] = useState<FileTab[]>([]);
   const [currentSelectedTab, setCurrentSelectedTab] = useState<FileTab>(null);
   const [editorSettings, setEditorSettings] = useState<EditorSettings>({
@@ -84,6 +92,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     });
   };
 
+  const updateFileTabName = useCallback(
+    (index: number, name: string) => {
+      setOpenedTabs((prev) => {
+        const newTabs = [...prev];
+        const tab = newTabs.find((tab) => tab.index === index);
+        if (tab) {
+          tab.name = name;
+        }
+        return newTabs;
+      });
+    },
+    [setOpenedTabs],
+  );
+
   const closeAllTabs = useCallback(() => {
     setOpenedTabs([]);
     setCurrentSelectedTab(null);
@@ -108,6 +130,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         addOpenFile,
         removeOpenFile,
         closeAllTabs,
+        updateFileTabName,
+        packFileEntries,
+        setPackFileEntries,
       }}
     >
       {children}

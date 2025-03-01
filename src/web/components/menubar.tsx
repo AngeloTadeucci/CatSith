@@ -15,6 +15,7 @@ import { isImage, isXml } from "@/web/lib/utils";
 import { EditorSettings, useAppState } from "@/web/src/AppState";
 import { Check, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import LoadingSpinner from "../assets/Icons/spinner";
 
 interface MenuBarProps {
   setConfirmDialogAction: (action: () => void) => void;
@@ -35,6 +36,7 @@ const MenuBar = ({
     setOpenedTabs,
     editorSettings,
     setEditorSettings,
+    packFileEntries,
   } = useAppState();
 
   useEffect(() => {
@@ -58,6 +60,28 @@ const MenuBar = ({
       }
     })();
   }, []);
+
+  const exportM2d = async () => {
+    const exportingToast = toast({
+      title: "Exporting m2d...",
+      description: <LoadingSpinner size={16} />,
+      duration: 0,
+    });
+    const [result, message] = await window.electron.exportM2d();
+    exportingToast.dismiss();
+    if (!result) {
+      toast({
+        title: "Error exporting m2d",
+        description: message,
+        duration: 5000,
+      });
+      return;
+    }
+    toast({
+      title: "Exported successfully",
+      duration: 2000,
+    });
+  };
 
   const onSaveTab = async () => {
     if (!currentSelectedTab) {
@@ -148,7 +172,7 @@ const MenuBar = ({
   }, [saveShortcut]);
 
   const onExit = async () => {
-    const changedFiles = await window.electron.hasChangedFiles();
+    const [changedFiles, message] = await window.electron.hasChangedFiles();
     if (changedFiles) {
       return setConfirmDialogAction(() => window.electron.exitApp);
     }
@@ -176,6 +200,10 @@ const MenuBar = ({
           <MenubarSeparator />
           <MenubarItem onClick={onSaveTab}>
             Save File <MenubarShortcut>Ctrl + S</MenubarShortcut>
+          </MenubarItem>
+          <MenubarSeparator />
+          <MenubarItem onClick={exportM2d} disabled={packFileEntries.length === 0}>
+            Export m2d
           </MenubarItem>
           <MenubarSeparator />
           <MenubarItem onClick={onExit}>Exit</MenubarItem>

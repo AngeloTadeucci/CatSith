@@ -1,6 +1,5 @@
 import { Input } from "@/web/components/ui/input";
 import { Search } from "lucide-react";
-import { PackFileEntry } from "maple2-file/dist/crypto/common/PackFileEntry";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NodeApi, Tree, TreeApi } from "react-arborist";
 import useResizeObserver from "use-resize-observer";
@@ -26,13 +25,15 @@ import {
   ResizablePanelGroup,
 } from "@/web/components/ui/resizable";
 import { useToast } from "@/web/hooks/use-toast";
-import { isXml } from "@/web/lib/utils";
+import { GetNodePath, isXml } from "@/web/lib/utils";
 import { useAppState } from "./AppState";
 import { EditorPanel } from "./EditorPanel";
 
 import LoadingSpinner from "@/web/assets/Icons/spinner";
 import Breadcrumb from "@/web/components/breadcrumb";
 import MenuBar from "@/web/components/menubar";
+import { Context } from "../components/contextmenu";
+import { rename } from "original-fs";
 
 self.MonacoEnvironment = {
   getWorker(_, label: string) {
@@ -57,9 +58,10 @@ self.MonacoEnvironment = {
 };
 // #endregion
 
-interface TreeDataItem {
+export interface TreeDataItem {
   id: string;
   name: string;
+  editing?: boolean;
   children?: TreeDataItem[];
 }
 
@@ -67,7 +69,6 @@ function App() {
   const { toast } = useToast();
 
   const [fileName, setFileName] = useState<string>("");
-  const [packFileEntries, setPackFileEntries] = useState<PackFileEntry[]>([]);
   const [treeData, setTreeData] = useState<TreeDataItem[]>([]);
 
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -84,6 +85,9 @@ function App() {
     setOpenedTabs,
     setCurrentSelectedTab,
     editorSettings,
+    packFileEntries,
+    setPackFileEntries,
+    updateFileTabName,
   } = useAppState();
 
   const [confirmDialogAction, setConfirmDialogAction] =
@@ -109,7 +113,9 @@ function App() {
       if (!id) {
         return;
       }
-      const fileEntry = packFileEntries[+id.split("-")[0] - 1];
+      const fileEntry = packFileEntries.find(
+        (entry) => entry.index === +id.split("-")[0],
+      );
       if (!fileEntry) {
         console.error("File entry not found");
         return;
@@ -160,7 +166,9 @@ function App() {
       return;
     }
 
-    const fileEntry = packFileEntries[+id.split("-")[0] - 1];
+    const fileEntry = packFileEntries.find(
+      (entry) => entry.index === +id.split("-")[0],
+    );
     if (!fileEntry) {
       console.error("File entry not found");
       return;
@@ -201,13 +209,13 @@ function App() {
 
     setFileName(loadFile.filePaths[0]);
     const packFiles = await window.electron.openM2d(loadFile.filePaths[0]);
-
-    updateState(packFiles);
+    reset();
+    setPackFileEntries(packFiles);
     setLoading(false);
   }
 
   const onLoadFile = async () => {
-    const hasChangedFiles = await window.electron.hasChangedFiles();
+    const [hasChangedFiles, message] = await window.electron.hasChangedFiles();
     if (hasChangedFiles) {
       setConfirmDialogAction(() => loadFile);
       return;
@@ -217,10 +225,11 @@ function App() {
   };
 
   const onSaveFile = async () => {
-    const hasChangedFiles = await window.electron.hasChangedFiles();
+    const [hasChangedFiles, message] = await window.electron.hasChangedFiles();
     if (!hasChangedFiles) {
       toast({
         title: "No changes to save",
+        description: message,
         duration: 2000,
       });
       return;
@@ -263,7 +272,8 @@ function App() {
 
     setFileName(filePath);
     const packFiles = await window.electron.openM2d(filePath);
-    updateState(packFiles);
+    reset();
+    setPackFileEntries(packFiles);
 
     toast({
       title: "New file loaded",
@@ -275,20 +285,19 @@ function App() {
   const wait = (ms: number) =>
     new Promise((resolve) => setTimeout(resolve, ms));
 
-  function updateState(packFiles: PackFileEntry[]) {
-    // reset state
+  const reset = () => {
     closeAllTabs();
     setPackFileEntries([]);
     setTreeData([]);
     treeRef.current?.closeAll();
+  };
 
-    setPackFileEntries(packFiles);
-
+  useEffect(() => {
     // files have folders names as keys for example "achieve/achieve.xml" we need to convert it to a tree structure
-    const treeData: TreeDataItem[] = [];
-    packFiles.forEach((entry) => {
+    const newTreeData: TreeDataItem[] = [];
+    packFileEntries.forEach((entry) => {
       const path = entry.name.split("/");
-      let parent = treeData;
+      let parent = newTreeData;
       path.forEach((folderName, index) => {
         const isFile = index === path.length - 1 && folderName.includes(".");
         const existingFolder = parent.find(
@@ -300,7 +309,7 @@ function App() {
         }
 
         const newFolder: TreeDataItem = {
-          id: `${entry.index}-${folderName}`,
+          id: `${entry.index}-${folderName}-${index}`,
           name: folderName,
           children: isFile ? undefined : ([] as TreeDataItem[]),
         };
@@ -310,10 +319,118 @@ function App() {
         }
       });
     });
-    treeData.sort((a, b) => a.name.localeCompare(b.name));
 
-    setTreeData(treeData);
-  }
+    newTreeData.sort((a, b) => a.name.localeCompare(b.name));
+
+    setTreeData(newTreeData);
+  }, [packFileEntries]);
+
+  const renameNode = async ({
+    id,
+    node,
+    name: newName,
+  }: {
+    id: string;
+    node: NodeApi<TreeDataItem>;
+    name: string;
+  }) => {
+    const fullOldName = GetNodePath(node.parent, node.data.name);
+    const fullName = GetNodePath(node.parent, newName);
+
+    const fileEntry = packFileEntries.find(
+      (entry) => entry.index === +id.split("-")[0],
+    );
+    if (!fileEntry) {
+      console.error("File entry not found");
+      return;
+    }
+
+    if (node.isLeaf) {
+      if (!newName.includes(".")) {
+        // prevent renaming a file to a folder
+        return;
+      }
+
+      // Check if the new name is already in use
+      for (const entry of packFileEntries) {
+        if (entry.name === fullName) {
+          toast({
+            title: "Error renaming file",
+            description: "A file with the same name already exists",
+            duration: 5000,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
+      const [result, entry] = await window.electron.renamePackFileEntry(
+        fileEntry.index,
+        fullName,
+      );
+      if (!result) {
+        console.error("Error renaming file");
+        return;
+      }
+      updateFileTabName(fileEntry.index, entry.name);
+      setPackFileEntries((prev) => {
+        const newPackFileEntries = [...prev];
+        newPackFileEntries[fileEntry.index - 1] = entry;
+        return newPackFileEntries;
+      });
+      return;
+    }
+
+    // Check if the new name is already in use
+    for (const entry of packFileEntries) {
+      if (entry.name.startsWith(fullName)) {
+        toast({
+          title: "Error renaming folder",
+          description: "A folder with the same name already exists",
+          duration: 5000,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    console.log("Renaming folder", fullName, fullOldName, newName);
+
+    // Rename folder
+    const [result, entries] = await window.electron.renamePackFolder(
+      fullOldName,
+      fullName,
+    );
+    if (!result) {
+      console.error("Error renaming folder", entries);
+      return;
+    }
+
+    setPackFileEntries((prev) => {
+      const newPackFileEntries = [...prev];
+      entries.forEach((entry) => {
+        const index = newPackFileEntries.findIndex(
+          (packFileEntry) => packFileEntry.index === entry.index,
+        );
+        newPackFileEntries[index] = entry;
+      });
+      return newPackFileEntries;
+    });
+  };
+
+  const [deleteNode, setDeleteNode] = useState<NodeApi<TreeDataItem> | null>(
+    null,
+  );
+
+  const deleteFile = async (node: NodeApi<TreeDataItem>) => {
+    const id = node?.data.id.split("-")[0];
+    if (id && !isNaN(+id)) {
+      await window.electron.deletePackFileEntry(+id);
+
+      const entries = packFileEntries.filter((entry) => entry.index !== +id);
+      setPackFileEntries(entries);
+    }
+  };
 
   function getNodeIcon(node: NodeApi<TreeDataItem>) {
     if (node.isLeaf) {
@@ -357,6 +474,21 @@ function App() {
         onCancel={() => setConfirmDialogAction(null)}
         onConfirm={confirmDialogAction}
       />
+      <ConfirmationDialog
+        isConfirmDialogOpen={!!deleteNode}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteNode(null);
+          }
+        }}
+        onCancel={() => setDeleteNode(null)}
+        onConfirm={() => {
+          setDeleteNode(null);
+          deleteFile(deleteNode);
+        }}
+        title={`Are you sure you want to delete ${deleteNode?.data?.name}?`}
+        description="This action cannot be undone."
+      />
       <div className="h-full w-full text-white">
         <MenuBar
           onLoadFile={onLoadFile}
@@ -398,52 +530,90 @@ function App() {
                     minBlockSize: 0,
                   }}
                 >
-                  <Tree
-                    ref={treeRef}
-                    data={treeData}
-                    openByDefault={false}
-                    width={width}
-                    height={height}
-                    disableDrag
-                    disableDrop
-                    searchTerm={searchQuery}
-                    searchMatch={(node: NodeApi<TreeDataItem>, term: string) =>
-                      node.data.name
-                        .toLowerCase()
-                        .includes(searchQuery.toLowerCase())
-                    }
-                    onFocus={onNodeFocus}
-                  >
-                    {({ node, style }) => {
-                      const nodeIsSelected =
-                        currentSelectedTab?.name ===
-                          packFileEntries[+node.data.id.split("-")[0] - 1]
-                            .name && node.isLeaf;
+                  <Context node={null} onDeleteFile={setDeleteNode}>
+                    <Tree
+                      ref={treeRef}
+                      data={treeData}
+                      openByDefault={false}
+                      width={width}
+                      height={height}
+                      searchTerm={searchQuery}
+                      searchMatch={(
+                        node: NodeApi<TreeDataItem>,
+                        term: string,
+                      ) =>
+                        node.data.name
+                          .toLowerCase()
+                          .includes(searchQuery.toLowerCase())
+                      }
+                      // onContextMenu={(e) => e.stopPropagation()}
+                      onFocus={onNodeFocus}
+                      onRename={renameNode}
+                    >
+                      {({ node, style }) => {
+                        const fileIndex = +node.data.id.split("-")[0];
+                        const fileEntry = packFileEntries.find(
+                          (entry) => entry.index === fileIndex,
+                        );
 
-                      return (
-                        <div
-                          style={style}
-                          className={`flex cursor-pointer select-none items-center ${
-                            nodeIsSelected
-                              ? "bg-gray-800"
-                              : "hover:bg-gray-800 hover:bg-opacity-40"
-                          }`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            node.toggle();
-                            node.select();
-                          }}
-                        >
-                          <div className="flex-shrink-0">
-                            {getNodeIcon(node)}
-                          </div>
-                          <span className="ml-1 overflow-hidden overflow-ellipsis whitespace-nowrap">
-                            {node.data.name}
-                          </span>
-                        </div>
-                      );
-                    }}
-                  </Tree>
+                        const nodeIsSelected =
+                          !node.data.id.startsWith("new") &&
+                          fileEntry &&
+                          currentSelectedTab?.name === fileEntry.name &&
+                          node.isLeaf;
+
+                        return (
+                          <Context node={node} onDeleteFile={setDeleteNode}>
+                            <div
+                              style={style}
+                              className={`flex cursor-pointer select-none items-center ${
+                                nodeIsSelected
+                                  ? "bg-gray-800"
+                                  : "hover:bg-gray-800 hover:bg-opacity-40"
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                node.toggle();
+                                node.select();
+                              }}
+                            >
+                              <div className="flex-shrink-0">
+                                {getNodeIcon(node)}
+                              </div>
+                              {node.isEditing ? (
+                                <input
+                                  className="ml-1 w-full text-black"
+                                  type="text"
+                                  onClick={(e) => e.stopPropagation()}
+                                  defaultValue={node.data.name}
+                                  onFocus={(e) => {
+                                    // Select the fileName (anything before .)
+                                    e.currentTarget.setSelectionRange(0, e.currentTarget.value.indexOf("."));
+                                  }}
+                                  onBlur={() => node.reset()}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      node.submit(e.currentTarget.value);
+                                      e.stopPropagation();
+                                    }
+
+                                    if (e.key === "Escape") {
+                                      node.reset();
+                                      e.stopPropagation();
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <span className="ml-1 overflow-hidden overflow-ellipsis whitespace-nowrap">
+                                  {node.data.name}
+                                </span>
+                              )}
+                            </div>
+                          </Context>
+                        );
+                      }}
+                    </Tree>
+                  </Context>
                 </div>
               </div>
             )}

@@ -13,9 +13,14 @@ export interface IElectronAPI {
 
   openM2d: (filePath: string) => Promise<PackFileEntry[]>;
   saveM2d: (filePath: string) => Promise<[boolean, string]>;
+  exportM2d: () => Promise<[boolean, string]>;
 
   getDataPackFileEntry: (packFileEntry: number) => Promise<string>;
   getXmlPackFileEntry: (packFileEntry: number) => Promise<string>;
+
+  createPackFile: (name: string) => Promise<PackFileEntry>;
+  renamePackFileEntry: (packFileEntryIndex: number, name: string) => Promise<[boolean, PackFileEntry]>;
+  renamePackFolder: (folderName: string, newName: string) => Promise<[boolean, PackFileEntry[]]>;
 
   saveXmlPackFileEntry: (
     packFileEntryIndex: number,
@@ -26,7 +31,7 @@ export interface IElectronAPI {
     value: Buffer,
   ) => Promise<[boolean, string]>;
 
-  hasChangedFiles: () => Promise<boolean>;
+  hasChangedFiles: () => Promise<[boolean, string]>;
 
   saveEditorSettings: (data: Record<string, any>) => Promise<void>;
   getEditorSettings: () => Promise<Record<string, any>>;

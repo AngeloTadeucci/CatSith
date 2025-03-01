@@ -18,9 +18,11 @@ export interface IElectronAPI {
   getDataPackFileEntry: (packFileEntry: number) => Promise<string>;
   getXmlPackFileEntry: (packFileEntry: number) => Promise<string>;
 
+  copyPackFileByIndex: (packFileEntryIndex: number) => Promise<PackFileEntry>;
   createPackFile: (name: string) => Promise<PackFileEntry>;
   renamePackFileEntry: (packFileEntryIndex: number, name: string) => Promise<[boolean, PackFileEntry]>;
   renamePackFolder: (folderName: string, newName: string) => Promise<[boolean, PackFileEntry[]]>;
+  deletePackFileEntry: (packFileEntryIndex: number) => Promise<[boolean, PackFileEntry[]]>;
 
   saveXmlPackFileEntry: (
     packFileEntryIndex: number,

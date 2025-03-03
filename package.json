@@ -1,7 +1,7 @@
 {
   "name": "catsith",
   "productName": "CatSith",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "MapleStory 2 Repacker",
   "main": ".vite/build/main.js",
   "private": true,

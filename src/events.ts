@@ -1,12 +1,13 @@
 import { app, dialog, ipcMain } from "electron";
-import { M2dReader, M2dWriter } from "maple2-file";
-import { BinaryBuffer } from "maple2-file/dist/crypto/common/BinaryBuffer";
+import { M2dReader, M2dWriter, PackFileEntry } from "maple2-file";
 import settings from "electron-settings";
 
 import logger from "electron-log/main";
 import { debounce } from "./web/lib/utils";
+import { ExportM2d } from "./export-m2d";
+import { clearPackFiles } from "./pack-files";
 
-let m2dReader: M2dReader;
+export let m2dReader: M2dReader;
 
 ipcMain.handle("get-app-version", () => {
   return app.getVersion();
@@ -27,6 +28,7 @@ ipcMain.handle("show-save-dialog", async (event, options) => {
 ipcMain.handle("open-m2d", async (event, filePath) => {
   const reader = new M2dReader(filePath);
   m2dReader = reader;
+  clearPackFiles();
   return reader.files;
 });
 
@@ -41,6 +43,7 @@ ipcMain.handle("save-m2d", async (event, filePath: string) => {
 
     const time = Date.now();
     writer.save();
+    clearPackFiles();
     return [true, `${Date.now() - time}ms`];
   } catch (error) {
     logger.error(error);
@@ -48,107 +51,8 @@ ipcMain.handle("save-m2d", async (event, filePath: string) => {
   }
 });
 
-ipcMain.handle(
-  "get-data-pack-file-entry",
-  async (event, packFileEntryIndex: number): Promise<string> => {
-    if (!m2dReader) {
-      throw new Error("M2D reader not initialized");
-    }
-
-    const packEntry = m2dReader.files[packFileEntryIndex - 1];
-    if (!packEntry) {
-      throw new Error("Pack file entry not found");
-    }
-    let data;
-    if (packEntry.changed) {
-      data = packEntry.data;
-    } else {
-      data = m2dReader.getBytes(packEntry);
-    }
-
-    return data.getBuffer().toString("base64");
-  },
-);
-
-ipcMain.handle(
-  "get-xml-pack-file-entry",
-  async (event, packFileEntryIndex: number) => {
-    if (!m2dReader) {
-      throw new Error("M2D reader not initialized");
-    }
-
-    try {
-      const packEntry = m2dReader.files[packFileEntryIndex - 1];
-      if (!packEntry) {
-        throw new Error("Pack file entry not found");
-      }
-      let data;
-      if (packEntry.changed) {
-        data = packEntry.data;
-      } else {
-        data = m2dReader.getBytes(packEntry);
-      }
-
-      if (!data) {
-        throw new Error("Data not found");
-      }
-
-      let decoder = new TextDecoder("utf-8");
-      const text = decoder.decode(data.getBuffer());
-      if (text.includes('encoding="euc-kr"')) {
-        decoder = new TextDecoder("euc-kr");
-        return decoder.decode(data.getBuffer());
-      }
-      return text;
-    } catch (error) {
-      console.error("Error reading XML", error);
-    }
-  },
-);
-
-ipcMain.handle(
-  "save-xml-pack-file-entry",
-  async (event, packFileEntryIndex: number, xml: string) => {
-    const packFileEntry = m2dReader.files.find(
-      (entry) => entry.index === packFileEntryIndex,
-    );
-    if (!packFileEntry) {
-      return [false, "Pack file entry not found"];
-    }
-
-    const xmlBytes = BinaryBuffer.fromBuffer(Buffer.from(xml, "utf-8"));
-
-    packFileEntry.data = xmlBytes;
-    packFileEntry.changed = true;
-
-    return [true, "Saved XML"];
-  },
-);
-
-ipcMain.handle(
-  "save-data-pack-file-entry",
-  async (event, packFileEntryIndex: number, data: Buffer) => {
-    const packFileEntry = m2dReader.files.find(
-      (entry) => entry.index === packFileEntryIndex,
-    );
-    if (!packFileEntry) {
-      return [false, "Pack file entry not found"];
-    }
-
-    const dataBytes = BinaryBuffer.fromBuffer(data);
-    packFileEntry.data = dataBytes;
-    packFileEntry.changed = true;
-
-    return [true, "Saved data"];
-  },
-);
-
-ipcMain.handle("has-changed-files", async (event) => {
-  if (!m2dReader) {
-    return false;
-  }
-
-  return m2dReader.files.some((entry) => entry.changed);
+ipcMain.handle("export-m2d", async (event) => {
+  return await ExportM2d();
 });
 
 ipcMain.handle("save-editor-settings", async (event, data) => {

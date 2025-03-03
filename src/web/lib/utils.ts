@@ -1,5 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
+import { NodeApi } from "react-arborist";
 import { twMerge } from "tailwind-merge";
+import { TreeDataItem } from "../src/App";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -27,4 +29,17 @@ export const debounce = (func: Function, wait: number) => {
     clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
   };
+};
+
+export const GetNodePath = (node: NodeApi<TreeDataItem>, name: string) => {
+  while (true) {
+    if (!node) break;
+    if (node.isRoot) break;
+    if (node.isLeaf) break;
+
+    name = `${node.data.name}/${name}`;
+    node = node.parent;
+  }
+
+  return name;
 };

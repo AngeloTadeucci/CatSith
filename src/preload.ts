@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("electron", {
 
   openM2d: (filePath: string) => ipcRenderer.invoke("open-m2d", filePath),
   saveM2d: (filePath: string) => ipcRenderer.invoke("save-m2d", filePath),
+  exportM2d: () => ipcRenderer.invoke("export-m2d"),
 
   getXmlPackFileEntry: (packFileEntry: PackFileEntry) =>
     ipcRenderer.invoke("get-xml-pack-file-entry", packFileEntry),
@@ -22,6 +23,12 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("save-xml-pack-file-entry", packFileEntryIndex, value),
   saveDataPackFileEntry: (packFileEntryIndex: number, value: Buffer) =>
     ipcRenderer.invoke("save-data-pack-file-entry", packFileEntryIndex, value),
+
+  copyPackFileByIndex: (packFileEntryIndex: number) => ipcRenderer.invoke("copy-pack-file-by-index", packFileEntryIndex),
+  createPackFile: (name: string) => ipcRenderer.invoke("create-pack-file", name),
+  renamePackFileEntry: (packFileEntryIndex: number, name: string) => ipcRenderer.invoke("rename-pack-file-entry", packFileEntryIndex, name),
+  renamePackFolder: (folderName: string, newName: string) => ipcRenderer.invoke("rename-pack-folder", folderName, newName),
+  deletePackFileEntry: (packFileEntryIndex: number) => ipcRenderer.invoke("delete-pack-file-entry", packFileEntryIndex),
 
   hasChangedFiles: () => ipcRenderer.invoke("has-changed-files"),
 

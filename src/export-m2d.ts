@@ -18,13 +18,6 @@ export const ExportM2d = async () => {
   for (const entry of m2dReader.files) {
     const data = entry.changed ? entry.data : m2dReader.getBytes(entry);
 
-    let decoder = new TextDecoder("utf-8");
-    let text = decoder.decode(data.getBuffer());
-    if (text.includes('encoding="euc-kr"')) {
-      decoder = new TextDecoder("euc-kr");
-      text = decoder.decode(data.getBuffer());
-    }
-
     const filePath = path.join(exportDir, entry.name);
     // Make any intermediate directories
     const dirPath = path.dirname(filePath);
@@ -32,7 +25,23 @@ export const ExportM2d = async () => {
       fs.mkdirSync(dirPath, { recursive: true });
     }
 
-    fs.writeFileSync(filePath, text);
+    // Check if file is XML or text-based format
+    const ext = path.extname(entry.name).toLowerCase();
+    const isTextFile = ['.xml', '.txt', '.json', '.html', '.xsd', '.xsl', '.xblock', '.flat'].includes(ext);
+
+    if (isTextFile) {
+      // Decode as text for XML and derivatives
+      let decoder = new TextDecoder("utf-8");
+      let text = decoder.decode(data.getBuffer());
+      if (text.includes('encoding="euc-kr"')) {
+        decoder = new TextDecoder("euc-kr");
+        text = decoder.decode(data.getBuffer());
+      }
+      fs.writeFileSync(filePath, text);
+    } else {
+      // Write binary data directly for other files (DDS, NIF, etc.)
+      fs.writeFileSync(filePath, new Uint8Array(data.getBuffer()));
+    }
   }
 
   return [true, "Exported successfully"];

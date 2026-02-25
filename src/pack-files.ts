@@ -83,7 +83,14 @@ ipcMain.handle(
       return [false, "Pack file entry not found"];
     }
 
-    packFileEntry.setData(xml);
+    // The read path decodes EUC-KR to Unicode, so the string is already
+    // losslessly converted. Update the XML declaration to match the actual
+    // encoding (UTF-8) that setData will store.
+    const normalizedXml = xml.replace(
+      /encoding="euc-kr"/i,
+      'encoding="utf-8"',
+    );
+    packFileEntry.setData(normalizedXml);
 
     return [true, "Saved XML"];
   },

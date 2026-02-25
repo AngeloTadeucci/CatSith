@@ -1,5 +1,4 @@
 import ConfirmationDialog from "@/web/components/confirmation-dialog";
-import { useToast } from "@/web/hooks/use-toast";
 import { isImage, isTexture, isXml } from "@/web/lib/utils";
 import { Editor, Monaco } from "@monaco-editor/react";
 import { editor } from "monaco-editor";
@@ -10,7 +9,6 @@ import { DDSViewer } from "@/web/src/DdsViewer";
 
 export const EditorPanel = () => {
   const [confirmIndex, setConfirmIndex] = useState<number | null>(null);
-  const { toast } = useToast();
 
   const editorRef = useRef<editor.IStandaloneCodeEditor>(null);
   const {
@@ -74,91 +72,6 @@ export const EditorPanel = () => {
     setConfirmIndex(null);
     removeOpenFile(confirmIndex);
   };
-
-  const handleSaveShortcut = useCallback(
-    async (event: KeyboardEvent) => {
-      if (!(event.ctrlKey && event.key === "s")) {
-        return;
-      }
-      event.preventDefault();
-
-      if (!currentSelectedTab) {
-        console.error("No tab selected");
-        return;
-      }
-
-      if (!currentSelectedTab.changed) {
-        console.error("No changes to save");
-        return;
-      }
-
-      if (isXml(currentSelectedTab.name)) {
-        const result = await window.electron.saveXmlPackFileEntry(
-          currentSelectedTab.index,
-          currentSelectedTab.value as string,
-        );
-
-        if (result[0]) {
-          setOpenedTabs((prevTabs) =>
-            prevTabs.map((tab) =>
-              tab.index === currentSelectedTab.index
-                ? { ...tab, changed: false }
-                : tab,
-            ),
-          );
-          toast({
-            title: "File saved",
-            duration: 2000,
-          });
-        } else {
-          toast({
-            title: "Error saving file",
-            description: result[1],
-            duration: 5000,
-          });
-        }
-
-        return;
-      }
-
-      if (isImage(currentSelectedTab.name)) {
-        // const result = await window.electron.saveDataPackFileEntry(
-        //   currentSelectedTab.index,
-        //   currentSelectedTab.value as Buffer, // TODO: fix this
-        // );
-
-        // if (result[0]) {
-        //   setOpenedTabs((prevTabs) =>
-        //     prevTabs.map((tab) =>
-        //       tab.index === currentSelectedTab.index
-        //         ? { ...tab, changed: false }
-        //         : tab,
-        //     ),
-        //   );
-        //   toast({
-        //     title: `${currentSelectedTab.name.split("/").pop()} saved`,
-        //     duration: 2000,
-        //   });
-        // } else {
-        //   toast({
-        //     title: "Error saving file",
-        //     description: result[1],
-        //     duration: 5000,
-        //   });
-        // }
-
-        return;
-      }
-    },
-    [currentSelectedTab],
-  );
-
-  useEffect(() => {
-    window.addEventListener("keydown", handleSaveShortcut);
-    return () => {
-      window.removeEventListener("keydown", handleSaveShortcut);
-    };
-  }, [handleSaveShortcut]);
 
   const notSupported =
     !!currentSelectedTab &&

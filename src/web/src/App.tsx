@@ -430,10 +430,23 @@ function App() {
   const deleteFile = async (node: NodeApi<TreeDataItem>) => {
     const id = node?.data.id.split("-")[0];
     if (id && !isNaN(+id)) {
-      await window.electron.deletePackFileEntry(+id);
+      const fileIndex = +id;
+      await window.electron.deletePackFileEntry(fileIndex);
 
-      const entries = packFileEntries.filter((entry) => entry.index !== +id);
-      setPackFileEntries(entries);
+      // Close the tab if the deleted file was open
+      setOpenedTabs((prev) => {
+        const newTabs = prev.filter((tab) => tab.index !== fileIndex);
+        if (newTabs.length === 0) {
+          setCurrentSelectedTab(null);
+        } else if (currentSelectedTab?.index === fileIndex) {
+          setCurrentSelectedTab(newTabs[0]);
+        }
+        return newTabs;
+      });
+
+      setPackFileEntries((prev) =>
+        prev.filter((entry) => entry.index !== fileIndex),
+      );
     }
   };
 

@@ -188,7 +188,12 @@ ipcMain.handle(
       return [false, "Pack file entry not found"];
     }
 
-    m2dReader.files.splice(packFileEntryIndex - 1, 1);
+    const arrayIndex = m2dReader.files.findIndex(
+      (entry) => entry.index === packFileEntryIndex,
+    );
+    if (arrayIndex !== -1) {
+      m2dReader.files.splice(arrayIndex, 1);
+    }
     modifiedPackFiles.push(packFileEntryIndex);
 
     return [true, packFileEntry];

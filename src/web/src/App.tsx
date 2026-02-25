@@ -375,7 +375,12 @@ function App() {
       updateFileTabName(fileEntry.index, entry.name);
       setPackFileEntries((prev) => {
         const newPackFileEntries = [...prev];
-        newPackFileEntries[fileEntry.index - 1] = entry;
+        const idx = newPackFileEntries.findIndex(
+          (e) => e.index === fileEntry.index,
+        );
+        if (idx !== -1) {
+          newPackFileEntries[idx] = entry;
+        }
         return newPackFileEntries;
       });
       return;

@@ -68,6 +68,7 @@ ipcMain.handle(
       return text;
     } catch (error) {
       console.error("Error reading XML", error);
+      throw error;
     }
   },
 );
